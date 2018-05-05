@@ -1,0 +1,103 @@
+---
+title: "Untitled"
+author: "Adam Pettitt"
+date: "5/5/2018"
+output: html_document
+---
+
+```{r}
+rm(list=ls())
+packages <- c("lme4", "nlme", 
+              "ggplot2", "dplyr", 
+              "tidyr", "data.table",
+              "longpower", "simr", "powerlmm",
+              "MBESS","sjPlot","GGally","knitr",
+              "tidyverse","simstudy")
+if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
+  install.packages(setdiff(packages, rownames(installed.packages())))
+}
+lapply(packages, library, character.only = TRUE)
+
+
+########### Marc
+
+# Set up using Keith Goldfield's "Longitudinal data with varying observation and interval times"
+#  https://cran.r-project.org/web/packages/simstudy/vignettes/simstudy.html
+
+simdatalong<-function(N,DIST,X){
+  def_T1 <- defData(varname = "Age.1", dist="uniform", formula = "6;9",id = "ID")             # create random uniform distribution of age range 6-9 
+  def_T1 <- defData(def_T1,varname = "Site", dist = "categorical", formula = "0.5;0.5")       # create random uniform distribution for two sites 
+  def_T1 <- defData(def_T1,varname = "Sex", dist = "categorical", formula = "0.5;0.5")        # create random uniform distribution for two Sexes
+  def_T1 <- defData(def_T1,varname = "spread", dist = "normal", formula = "1",variance=0.01)  # create random "spread" factor for adjusting values 
+  def_T1 <- defData(def_T1,varname = "FIQ", dist = "normal", formula = "100", variance =30)   # create random distribution for FIQ
+  def_T1 <- defData(def_T1,varname = "noise", dist = "normal", formula = "1",variance=0.02)   # create random "noise" factor for adjusting values  
+  def_T1 <- defData(def_T1, varname = "nCount", dist = "uniform", formula = paste0(DIST))        # define nCount = number of measurements for an individual   
+  def_T1 <- defData(def_T1, varname = "mInterval", dist = "uniform", formula = "0.8;1.2")     # define mInterval = the average time (years) between intervals for a subject
+  def_T1 <- defData(def_T1, varname = "vInterval", dist = "nonrandom", formula = 0.07)        # define vInterval = specifies the variance of those interval times
+  
+  # Generate Simulated Data    
+  SIM_DATA <- genData(N, def_T1)
+  
+  SIM_DATA$nCount <- round(SIM_DATA$nCount)
+  
+  ## Create Longitudinal dataframe based on parameters defined above      
+  SIM_DATA_long <- addPeriods(SIM_DATA, id="ID")
+  
+  # Create Age/Time dependent morphology variables
+  
+ 
+  # Brain Measure decreasing at X% per year with added noise
+   def_Long  <- defDataAdd(varname = "brain.measure",
+                          dist = "normal",
+                          formula = paste0("2.8*(spread*(1",X,"*time))"),
+                          variance = 0.018)
+
+  
+  
+  # Add Age dependent variables to longitudinal dataframe     
+  SIM_DATA_long  <- addColumns(def_Long,SIM_DATA_long)
+  
+  # create a new column with Age term
+  SIM_DATA_long <- mutate(SIM_DATA_long, Age = Age.1 + time) 
+  
+  # Convert periods into a factor for neater plots
+  SIM_DATA_long$period <- as.factor(SIM_DATA_long$period)
+  
+  # Create Factor Labels   
+  SIM_DATA_long <- within(SIM_DATA_long, {
+    Site <- factor(Site, levels=c(1,2), labels=c("Here", "There"))
+    Sex <- factor(Sex, levels=c(1,2), labels=c("Female", "Male"))
+    period <- factor(period, levels=c(0,1,2,3), labels=c("Baseline", "Time2", "Time3", "Time4") )
+  } )
+  return(SIM_DATA_long)
+}
+
+#number of participants (J) with a given number of brains per participant (K)
+
+mixed.power<-function(N, DIST, X, n.sims){
+  signif<-rep(NA, n.sims) #note that you can specify number of simulations - default is 1000
+  pb<-tkProgressBar(title="Progress", min=0, max=100, width=300)
+    for(s in 1:n.sims){
+    fake.data<-simdatalong(N,DIST,X)                                               #calls in data simulation function
+    lme.power.null<-lmer(brain.measure~1+(1|ID), REML = FALSE,data=fake.data)
+    lme.power<-lmer(brain.measure~Age+(1|ID), REML = FALSE,data=fake.data)            #estimates mixed effect model using each simulated dataset
+    theta.hat<-fixef(lme.power)["Age"]                                  #saves age coefficients from each simulated dataset 
+    theta.se<-se.fixef(lme.power)["Age"]                                #saves standard error of age coefficients from each simulated dataset
+    signif[s]<-ifelse(anova(lme.power.null,lme.power)$`Pr(>Chisq)`[2]<.05, 1, 0)#assigns value of 1 to significant coefficients 0 to ns coefficients
+    setTkProgressBar(pb, s/n.sims*100, title=paste(round(s/n.sims*100, 0), "% done"))
+    }
+  close(pb)
+  power<-mean(signif, na.rm=T) #calculates proportion of significant models out of # of simulated datasets... 
+  return(power)
+}
+
+mixed.power(N=200,
+            DIST="1;2",
+            X = -.01,
+            n.sims=200)
+
+
+
+
+```
+
