@@ -24,13 +24,9 @@ if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
 }
 lapply(packages, library, character.only = TRUE)
 
-simdatalong<-function(N, DIST, DELTA){
+simdatalong<-function(N,DIST,DELTA){
   def_T1 <- defData(varname = "Age.1", dist="uniform", formula = "6;9",id = "ID")             # create random uniform distribution of age range 6-9 
-  def_T1 <- defData(def_T1,varname = "Site", dist = "categorical", formula = "0.5;0.5")       # create random uniform distribution for two sites 
-  def_T1 <- defData(def_T1,varname = "Sex", dist = "categorical", formula = "0.5;0.5")        # create random uniform distribution for two Sexes
   def_T1 <- defData(def_T1,varname = "spread", dist = "normal", formula = "1",variance=0.01)  # create random "spread" factor for adjusting values 
-  def_T1 <- defData(def_T1,varname = "FIQ", dist = "normal", formula = "100", variance =30)   # create random distribution for FIQ
-  def_T1 <- defData(def_T1,varname = "noise", dist = "normal", formula = "1",variance=0.02)   # create random "noise" factor for adjusting values  
   def_T1 <- defData(def_T1, varname = "nCount", dist = "uniform", formula = paste0(DIST))        # define nCount = number of measurements for an individual   
   def_T1 <- defData(def_T1, varname = "mInterval", dist = "uniform", formula = "0.8;1.2")     # define mInterval = the average time (years) between intervals for a subject
   def_T1 <- defData(def_T1, varname = "vInterval", dist = "nonrandom", formula = 0.07)        # define vInterval = specifies the variance of those interval times
@@ -43,12 +39,13 @@ simdatalong<-function(N, DIST, DELTA){
   ## Create Longitudinal dataframe based on parameters defined above      
   SIM_DATA_long <- addPeriods(SIM_DATA, id="ID")
   
-  # Create Age/Time dependent morphology variables
-  
+  # Brain Measure decreasing at X% per year with added noise
   def_Long  <- defDataAdd(varname = "brain.measure",
                           dist = "normal",
                           formula = paste0("2.8*(spread*(1",DELTA,"*time))"),
                           variance = 0.018)
+  
+  
   
   # Add Age dependent variables to longitudinal dataframe     
   SIM_DATA_long  <- addColumns(def_Long,SIM_DATA_long)
@@ -56,16 +53,6 @@ simdatalong<-function(N, DIST, DELTA){
   # create a new column with Age term
   SIM_DATA_long <- mutate(SIM_DATA_long, Age = Age.1 + time) 
   
-  # Convert periods into a factor for neater plots
-  SIM_DATA_long$period <- as.factor(SIM_DATA_long$period)
-  
-  # Create Factor Labels   
-  SIM_DATA_long <- within(SIM_DATA_long, {
-    Site <- factor(Site, levels=c(1,2), labels=c("Here", "There"))
-    Sex <- factor(Sex, levels=c(1,2), labels=c("Female", "Male"))
-    period <- factor(period, levels=c(0,1,2,3), labels=c("Baseline", "Time2", "Time3", "Time4") )
-  } )
-  return(SIM_DATA_long)
 }
 
 mixed.power<-function(N, DIST, DELTA, n.sims){
@@ -95,10 +82,22 @@ ui <- fluidPage(
          sliderInput("N",
                      "Number of participants:",
                      min = 1,
-                     max = 50,
-                     value=20)
+                     max = 500,
+                     value=250),
+         # Input: Decimal interval with step value ----
+         sliderInput("low", "Minimum Number of Scans:",
+                     min = 1, max = 7,
+                     value = 1, step = 1),
+         
+         # Input: Specification of range within an interval ----
+         sliderInput("high", "Maximum Number of Scans:",
+                     min = 2, max = 8,
+                     value = 2, step = 1),
+      # Input: Decimal interval with step value ----
+      sliderInput("DELTA", "Percent Change in Brain Volume:",
+                  min = -5, max = 0,
+                  value = 0.0, step = .25)
       ),
-      
       # Show a plot of the generated distribution
       mainPanel(
         textOutput("selected_var")
@@ -112,12 +111,11 @@ server <- function(input, output) {
   output$selected_var <- renderText({
      
      mixed.power(N=input$N,
-                 DIST="1;4",
-                 DELTA=-.01,
-                 n.sims=10)
+                 DIST=paste0(input$low,";",input$high),
+                 DELTA=(input$DELTA)*.01,
+                 n.sims=100)
    })
 }
 
 # Run the application 
 shinyApp(ui = ui, server = server)
-
