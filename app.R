@@ -19,13 +19,20 @@ packages <- c("lme4", "nlme",
               "tidyr", "data.table",
               "longpower", "simr", "powerlmm",
               "MBESS","sjPlot","GGally","knitr",
-              "tidyverse","simstudy","arm","shiny","shinythemes")
+              "tidyverse","simstudy","arm","shinythemes","shinyjs")
 if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
   install.packages(setdiff(packages, rownames(installed.packages())))
 }
 lapply(packages, library, character.only = TRUE)
 
-simdatalong<-function(N,DIST,DELTA){
+########### Marc
+
+# Set up using Keith Goldfield's "Longitudinal data with varying observation and interval times"
+#  https://cran.r-project.org/web/packages/simstudy/vignettes/simstudy.html
+
+
+
+simdatalong<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE){
   def_T1 <- defData(varname = "Age.1", dist="uniform", formula = "6;9",id = "ID")             # create random uniform distribution of age range 6-9 
   def_T1 <- defData(def_T1,varname = "spread", dist = "normal", formula = "1",variance=0.01)  # create random "spread" factor for adjusting values 
   def_T1 <- defData(def_T1, varname = "mInterval", dist = "uniform", formula = "0.8;1.2")     # define mInterval = the average time (years) between intervals for a subject
@@ -39,26 +46,45 @@ simdatalong<-function(N,DIST,DELTA){
   ## Create Longitudinal dataframe based on parameters defined above      
   SIM_DATA_long <- addPeriods(SIM_DATA, id="ID")
   
-  # Brain Measure decreasing at X% per year with added noise
-  def_Long  <- defDataAdd(varname = "brain.measure",
-                          dist = "normal",
-                          formula = paste0("2.8*(spread*(1",DELTA,"*time))"),
-                          variance = 0.018)
   
-  
+  # Brain Measure decreasing at DELTA% per year with added noise
+  if (CUSTOM == "No") {
+    def_Long  <- defDataAdd(varname = "brain.measure",
+                            dist = "normal",
+                            formula = paste0("2.8*(spread*(1",DELTA,"*time))"),
+                            variance = 0.018)
+  } else {
+    def_Long  <- defDataAdd(varname = "brain.measure",
+                            dist = "normal",
+                            formula = paste0(INTERCEPT,"*(spread*(1",DELTA,"*time))"),
+                            variance = VARIANCE)
+  }
   
   # Add Age dependent variables to longitudinal dataframe     
   SIM_DATA_long  <- addColumns(def_Long,SIM_DATA_long)
   
+  
   # create a new column with Age term
   SIM_DATA_long <- mutate(SIM_DATA_long, Age = Age.1 + time) 
   
+  SIM_DATA_long$ID <- as.factor(SIM_DATA_long$ID)
+  
+  SIM_DATA_long$time <- as.factor(SIM_DATA_long$time)
+  # Return
+  SIM_DATA_long
 }
 
-mixed.power<-function(N, DIST, DELTA, n.sims){
+
+#number of participants (J) with a given number of brains per participant (K)
+
+mixed.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE, n.sims){
   signif<-rep(NA, n.sims) #note that you can specify number of simulations - default is 1000
   for(s in 1:n.sims){
-    fake.data<-simdatalong(N, DIST, DELTA)                                               #calls in data simulation function
+    if (CUSTOM=="Yes"){
+      fake.data<-simdatalong(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE)                  #calls in data simulation function
+    } else {
+      fake.data<-simdatalong(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE)           #calls in data simulation function
+    }
     lme.power.null<-lmer(brain.measure~1+(1|ID), REML = FALSE,data=fake.data)
     lme.power<-lmer(brain.measure~Age+(1|ID), REML = FALSE,data=fake.data)            #estimates mixed effect model using each simulated dataset
     theta.hat<-fixef(lme.power)["Age"]                                  #saves age coefficients from each simulated dataset 
@@ -70,8 +96,11 @@ mixed.power<-function(N, DIST, DELTA, n.sims){
 }
 
 
+
 # Define UI for application that draws a histogram
 ui <- fluidPage(theme = shinytheme("superhero"),
+                useShinyjs(),
+                inlineCSS(list('#text3 ' = 'text-align: center')),
                 tags$head(tags$style("
                   #container * {  
    display: inline;
@@ -100,20 +129,34 @@ ui <- fluidPage(theme = shinytheme("superhero"),
    sidebarLayout(
       sidebarPanel(
          sliderInput("N",
-                     "Number of participants:",
+                     "Number of participants: ",
                      min = 1,
                      max = 500,
                      value=250),
-         # Input: Decimal interval with step value ----
-         numericInput("DIST", "Number of Scans:",
-                      2,min=2,width='33%'),
          
+       
+         # Input: Decimal interval with step value ----
+       
+          numericInput("DIST", "Number of Scans: ",
+                      2,min=2,width='100%'),
+        
          
       # Input: Decimal interval with step value ----
-      sliderInput("DELTA", "Percent Change in Brain Volume:",
+      sliderInput("DELTA", "Percent Change in Brain Volume: ",
                   min = -5, max = 0,
-                  value = -1.0, step = .25)
-      ),
+                  value = -1.0, step = .25),
+      
+      selectInput("CUSTOM", "Would you like to set custom parameters for the Intercept and Variance?",
+                  c("No",
+                       "Yes")),
+      
+      conditionalPanel(
+        condition = "input.CUSTOM == 'Yes'",
+        numericInput("INTERCEPT", "Intercept Value: ", 0),
+        numericInput("VARIANCE", "Variance Value: ", 0)
+         )
+          ),
+  
       # Show a plot of the generated distribution
       mainPanel(
         div(id="container",h5('With this study design, your predicted power woule be: ', textOutput("selected_var")))
@@ -126,10 +169,13 @@ server <- function(input, output) {
   output$text1 <- renderText({paste("You have selected")})
   output$selected_var <- renderText({
 
-     mixed.power(N=input$N,
-                 DIST=input$DIST,
-                 DELTA=(input$DELTA)*.01,
-                 n.sims=100)
+    mixed.power(N=input$N,
+                DIST=input$DIST,
+                DELTA=(input$DELTA)*.01,
+                CUSTOM=input$CUSTOM,
+                INTERCEPT= input$INTERCEPT,
+                VARIANCE= input$VARIANCE,
+                n.sims=100)
    })
 }
 
