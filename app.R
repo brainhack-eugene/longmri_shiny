@@ -12,7 +12,13 @@
 #
 
 
-
+apatheme=theme_bw()+
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.border=element_blank(),
+        axis.line=element_line(),
+        text=element_text(family='Times'),
+        plot.title = element_text(hjust = 0.5))
 
 packages <- c("lme4", "nlme", 
               "ggplot2", "dplyr", 
@@ -77,23 +83,7 @@ simdatalong<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE){
 
 #number of participants (J) with a given number of brains per participant (K)
 
-mixed.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE, n.sims){
-  signif<-rep(NA, n.sims) #note that you can specify number of simulations - default is 1000
-  for(s in 1:n.sims){
-    if (CUSTOM=="Yes"){
-      fake.data<-simdatalong(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE)                  #calls in data simulation function
-    } else {
-      fake.data<-simdatalong(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE)           #calls in data simulation function
-    }
-    lme.power.null<-lmer(brain.measure~1+(1|ID), REML = FALSE,data=fake.data)
-    lme.power<-lmer(brain.measure~Age+(1|ID), REML = FALSE,data=fake.data)            #estimates mixed effect model using each simulated dataset
-    theta.hat<-fixef(lme.power)["Age"]                                  #saves age coefficients from each simulated dataset 
-    theta.se<-se.fixef(lme.power)["Age"]                                #saves standard error of age coefficients from each simulated dataset
-    signif[s]<-ifelse(anova(lme.power.null,lme.power)$`Pr(>Chisq)`[2]<.05, 1, 0)#assigns value of 1 to significant coefficients 0 to ns coefficients
-  }
-  power<-mean(signif, na.rm=T) #calculates proportion of significant models out of # of simulated datasets... 
-  return(power)
-}
+
 
 
 
@@ -102,11 +92,11 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                 useShinyjs(),
                 inlineCSS(list('#text3 ' = 'text-align: center')),
                 tags$head(tags$style("
-                  #container * {  
-   display: inline;
-                     }"),
+                                     #container * {  
+                                     display: inline;
+                                     }"),
                           HTML("
-        <script>
+                               <script>
                                $(document).ready(function(){
                                $(\".js-range-slider\").ionRangeSlider({
                                hide_min_max: false,
@@ -115,68 +105,139 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                                });
                                </script>
                                ")
-                          ),
+                ),
                 tags$style(type = "text/css", "
-        .irs-min {visibility:visible !important;}
+                           .irs-min {visibility:visible !important;}
                            .irs-max {color:white}
                            .irs-min {color:white}
                            "),
                 
-   # Application title
-   titlePanel("Longitudinal MRI Power Calculator"),
-   
-   # Sidebar with a slider input for number of bins 
-   sidebarLayout(
-      sidebarPanel(
-         sliderInput("N",
-                     "Number of participants: ",
-                     min = 1,
-                     max = 500,
-                     value=250),
-         
-       
-         # Input: Decimal interval with step value ----
-       
-          numericInput("DIST", "Number of Scans: ",
-                      2,min=2,width='100%'),
-        
-         
-      # Input: Decimal interval with step value ----
-      sliderInput("DELTA", "Percent Change in Brain Volume: ",
-                  min = -5, max = 0,
-                  value = -1.0, step = .25),
-      
-      selectInput("CUSTOM", "Would you like to set custom parameters for the Intercept and Variance?",
-                  c("No",
-                       "Yes")),
-      
-      conditionalPanel(
-        condition = "input.CUSTOM == 'Yes'",
-        numericInput("INTERCEPT", "Intercept Value: ", 0),
-        numericInput("VARIANCE", "Variance Value: ", 0)
-         )
-          ),
-  
-      # Show a plot of the generated distribution
-      mainPanel(
-        div(id="container",h5('With this study design, your predicted power woule be: ', textOutput("selected_var")))
-      )
-   )
-)
+                # Application title
+                titlePanel("Longitudinal MRI Power Calculator"),
+                
+                # Sidebar with a slider input for number of bins 
+                sidebarLayout(
+                  sidebarPanel(
+                    sliderInput("N",
+                                "Number of Participants: ",
+                                min = 0,
+                                max = 500,
+                                value=250),
+                    
+                    
+                    # Input: Number of Scans per participant
+                    
+                    numericInput("DIST", "Number of Scans per Participant (Minimum 2): ",
+                                 2,min=2,width='100%'),
+                    
+                    
+                    # Input: Percent change in brain volume 
+                    sliderInput("DELTA", "Percent Change in Brain Volume: ",
+                                min = -5, max = 0,
+                                value = -1.0, step = .25),
+                    
+                    # Input: Number of simulations
+                    numericInput("n.sims", "Number of Simulations: ",
+                                 100,min=1,width='100%'),
+                    
+                    # Input: Lets user select if they would like a graph
+                    selectInput("graph", "Would you like create a graph? Warning: Depending on your parameters (e.g., high N, high simulation), this option could take a while.",
+                                c("No",
+                                  "Yes")),
+                    # Input: Lets user select if they would like to customize parameters
+                    selectInput("CUSTOM", "Would you like to set custom parameters for the Intercept and Variance?",
+                                c("No",
+                                  "Yes")),
+                    
+                    # Input: If they did want to add custom parameters, now's their chance! 
+                    conditionalPanel(
+                      condition = "input.CUSTOM == 'Yes'",
+                      numericInput("INTERCEPT", "Intercept Value: ", NA),
+                      numericInput("VARIANCE", "Variance Value: ", NA)
+                    ),
+                      
+                    actionButton("calculate", "Calculate",width='100%')
+                    ),
+                  
+                  # Show a plot of the generated distribution
+                  mainPanel(
+                    div(id="container",h5('With this study design, your predicted power woule be: ', textOutput("selected_var"))),
+                    plotOutput("plot1")
+                  )
+                )
+              )
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
-  output$text1 <- renderText({paste("You have selected")})
-  output$selected_var <- renderText({
-
-    mixed.power(N=input$N,
-                DIST=input$DIST,
-                DELTA=(input$DELTA)*.01,
-                CUSTOM=input$CUSTOM,
-                INTERCEPT= input$INTERCEPT,
-                VARIANCE= input$VARIANCE,
-                n.sims=100)
-   })
+  mixed.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE, n.sims){
+    signif<-rep(NA, n.sims) #note that you can specify number of simulations - default is 1000
+    withProgress(message = 'Running Simulations', value = 0, {
+      for(s in 1:n.sims){
+        if (CUSTOM=="Yes"){
+          fake.data<-simdatalong(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE)                  #calls in data simulation function
+        } else {
+          fake.data<-simdatalong(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE)           #calls in data simulation function
+        }
+        lme.power.null<-lmer(brain.measure~1+(1|ID), REML = FALSE,data=fake.data)
+        lme.power<-lmer(brain.measure~Age+(1|ID), REML = FALSE,data=fake.data)            #estimates mixed effect model using each simulated dataset
+        theta.hat<-fixef(lme.power)["Age"]                                  #saves age coefficients from each simulated dataset 
+        theta.se<-se.fixef(lme.power)["Age"]                                #saves standard error of age coefficients from each simulated dataset
+        signif[s]<-ifelse(anova(lme.power.null,lme.power)$`Pr(>Chisq)`[2]<.05, 1, 0)#assigns value of 1 to significant coefficients 0 to ns coefficients
+        incProgress(1/n.sims, detail = paste("Simulation", s))
+      }
+    })
+    power<-mean(signif, na.rm=T) #calculates proportion of significant models out of # of simulated datasets... 
+    return(power)
+  }
+  graph.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE,n.sims){
+    require(ggplot2)
+    KK<-seq(10, N, by=5)       #will ieterate from 3 cases to the max.K specified in the function above
+    Y<-rep(NA, length(KK))        #Empty vector to contain power estimates from mixed.power () function
+    NN<-rep(DIST, length(KK))        #Repeates the number of habitats you specified to equal the length of the KK vector 
+    withProgress(message = 'Running Simulations', value = 0, {
+    for(i in 1:length(KK)){
+      Y[i]<-mixed.power(KK[i], NN[i],DELTA,CUSTOM,INTERCEPT,VARIANCE,n.sims) #runs mixed power function and stores results one at a time
+      incProgress(1/length(KK), detail = paste("Simulation", i))
+    }
+    })
+    DF<-as.data.frame(cbind(KK, Y)) #creates data frame for plotting
+    colnames(DF)<-c("KK", "Y")
+    #Code below provides a basic power plot with a horizontal line at .80 
+    g1<-ggplot(aes(x=KK, y=Y), data=DF) +
+      geom_smooth(se=F)+geom_hline(yintercept = .8, lty="dashed", col="salmon", lwd=1) +
+      xlab("Scans Per Participant")+ylab("Power")+ 
+      ggtitle("Power Analysis") +
+      scale_y_continuous(limits = c(0, 1))+
+      apatheme
+    return(g1)
+  }
+observeEvent(input$calculate,{
+  if (input$graph=="No") {output$text1 <- renderText({paste("You have selected")})
+      observeEvent(input$calculate,{
+      output$selected_var <- renderText({
+          isolate(mixed.power(N=input$N,
+                          DIST=input$DIST,
+                          DELTA=(input$DELTA)*.01,
+                          CUSTOM=input$CUSTOM,
+                          INTERCEPT= input$INTERCEPT,
+                          VARIANCE= input$VARIANCE,
+                          n.sims=input$n.sims))
+        })
+      })
+    }
+  else {observeEvent(input$calculate,{output$text1 <- renderText({paste("You may want to go get something to eat. This may take a while.")})
+    output$plot1 <- renderPlot({
+      isolate(graph.power(N=input$N,
+                          DIST=input$DIST,
+                          DELTA=(input$DELTA)*.01,
+                          CUSTOM=input$CUSTOM,
+                          INTERCEPT= input$INTERCEPT,
+                          VARIANCE= input$VARIANCE,
+                          n.sims=input$n.sims))
+        })
+      })
+    }
+  })
 }
 
 # Run the application 
