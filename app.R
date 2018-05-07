@@ -11,26 +11,31 @@
 #
 #
 
-
-apatheme=theme_bw()+
-  theme(panel.grid.major=element_blank(),
-        panel.grid.minor=element_blank(),
-        panel.border=element_blank(),
-        axis.line=element_line(),
-        text=element_text(family='Times'),
-        plot.title = element_text(hjust = 0.5))
-
 packages <- c("lme4", "nlme", 
               "ggplot2", "dplyr", 
               "tidyr", "data.table",
               "longpower", "simr", "powerlmm",
               "MBESS","sjPlot","GGally","knitr",
-              "tidyverse","simstudy","arm","shinythemes","shinyjs")
+              "tidyverse","simstudy","arm","shinythemes","shinyjs","cowplot")
 if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
   install.packages(setdiff(packages, rownames(installed.packages())))
 }
 lapply(packages, library, character.only = TRUE)
-
+text_settings <-
+  theme(text = element_text(size = 15)) +
+  theme(plot.title = element_text(size =20,face='bold')) +
+  theme(axis.title.x = element_text(face='bold')) +
+  theme(axis.title.y = element_text(face='bold')) +
+  theme(axis.text.x = element_text(size = 15)) +
+  theme(axis.text.y = element_text(size = 15)) +
+  theme(axis.ticks = element_blank())
+apatheme=theme_bw()+
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.border=element_blank(),
+        axis.line=element_line(),
+        text=element_text(family='Helvetica'),
+        plot.title = element_text(hjust = 0.5))
 ########### Marc
 
 # Set up using Keith Goldfield's "Longitudinal data with varying observation and interval times"
@@ -156,12 +161,13 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                       numericInput("VARIANCE", "Variance Value: ", NA)
                     ),
                       
-                    actionButton("calculate", "Calculate",width='100%')
+                    actionButton("calculate", "Calculate",width='100%',)
                     ),
                   
                   # Show a plot of the generated distribution
                   mainPanel(
-                    div(id="container",h5('With this study design, your predicted power woule be: ', textOutput("selected_var"))),
+                    
+                    div(id="container",h5(textOutput("selected_var"))),
                     plotOutput("plot1")
                   )
                 )
@@ -204,28 +210,32 @@ server <- function(input, output) {
     colnames(DF)<-c("KK", "Y")
     #Code below provides a basic power plot with a horizontal line at .80 
     g1<-ggplot(aes(x=KK, y=Y), data=DF) +
-      geom_smooth(se=F)+geom_hline(yintercept = .8, lty="dashed", col="salmon", lwd=1) +
-      xlab("Scans Per Participant")+ylab("Power")+ 
+      geom_smooth(se=F,color="#d75452")+
+      geom_hline(yintercept = .8, lty="dashed", col="#5b6976", lwd=1) +
+      xlab("\nScans Per Participant")+ylab("\nPower")+ 
       ggtitle("Power Analysis") +
-      scale_y_continuous(limits = c(0, 1))+
-      apatheme
+      scale_y_continuous(limits = c(0, 1)) +
+      apatheme+
+      text_settings +
+      theme(axis.title=element_text(color = "#ebebeb"),axis.text=element_text(color="#ebebeb"),axis.line=element_line(color="#ebebeb"),axis.ticks=element_line(color="#ebebeb"),plot.title=element_text(color="#ebebeb"),plot.background = element_rect(fill = "#2c3e4f",colour="#2c3e4f"),panel.background = element_rect(fill="#2c3e4f",color="#2c3e4f"))
     return(g1)
   }
 observeEvent(input$calculate,{
   if (input$graph=="No") {output$text1 <- renderText({paste("You have selected")})
-      observeEvent(input$calculate,{
+      observeEvent(isolate(input$calculate),{
       output$selected_var <- renderText({
-          isolate(mixed.power(N=input$N,
+        paste("With this study design, your predicted power woule be: ", 
+          isolate({mixed.power(N=input$N,
                           DIST=input$DIST,
                           DELTA=(input$DELTA)*.01,
                           CUSTOM=input$CUSTOM,
                           INTERCEPT= input$INTERCEPT,
                           VARIANCE= input$VARIANCE,
-                          n.sims=input$n.sims))
+                          n.sims=input$n.sims)}))
         })
       })
     }
-  else {observeEvent(input$calculate,{output$text1 <- renderText({paste("You may want to go get something to eat. This may take a while.")})
+  else {observeEvent(isolate(input$calculate),{output$text1 <- renderText({paste("You may want to go get something to eat. This may take a while.")})
     output$plot1 <- renderPlot({
       isolate(graph.power(N=input$N,
                           DIST=input$DIST,
