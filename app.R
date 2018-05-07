@@ -224,7 +224,7 @@ observeEvent(input$calculate,{
   if (input$graph=="No") {output$text1 <- renderText({paste("You have selected")})
       observeEvent(isolate(input$calculate),{
       output$selected_var <- renderText({
-        paste("With this study design, your predicted power woule be: ", 
+        paste("With this study design, your predicted power would be: ", 
           isolate({mixed.power(N=input$N,
                           DIST=input$DIST,
                           DELTA=(input$DELTA)*.01,
