@@ -230,7 +230,7 @@ observeEvent(input$calculate,{
       hide("plot1")
       show("selected_var")
       output$selected_var <- renderText({
-        paste("With this study design, your predicted power woule be: ", 
+        paste("With this study design, your predicted power would be: ", 
           isolate({mixed.power(N=input$N,
                           DIST=input$DIST,
                           DELTA=(input$DELTA)*.01,
