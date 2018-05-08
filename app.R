@@ -132,7 +132,7 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                     
                     # Input: Number of Scans per participant
                     
-                    numericInput("DIST", "Number of Scans per Participant (Minimum 2): ",
+                    numericInput("DIST", "Max number of Scans per Participant: ",
                                  2,min=2,width='100%'),
                     
                     
@@ -230,7 +230,7 @@ observeEvent(input$calculate,{
       hide("plot1")
       show("selected_var")
       output$selected_var <- renderText({
-        paste("With this study design, your predicted power would be: ", 
+        paste0("With ",input$N," participants with this study design, your predicted power would be: ", 
           isolate({mixed.power(N=input$N,
                           DIST=input$DIST,
                           DELTA=(input$DELTA)*.01,
