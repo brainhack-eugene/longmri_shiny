@@ -3,13 +3,14 @@ Longitudinal MRI Calculator for power analyses
 
 # Depends on...
 
-library("lme4")
-library("GGally")
-library("knitr")
-library("tidyverse")
-library("simstudy")
-library("arm")
-library("shinythemes")
-library("shinyjs")
-library("stringr")
+- install.packages("lme4")
+- install.packages("GGally")
+- install.packages("knitr")
+- install.packages("tidyverse")
+- install.packages("simstudy")
+- install.packages("arm")
+- install.packages("shinythemes")
+- install.packages("shinyjs")
+- install.packages("stringr")
+
 
