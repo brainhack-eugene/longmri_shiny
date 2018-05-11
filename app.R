@@ -178,7 +178,7 @@ ui <- fluidPage(theme = shinytheme("superhero"),
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
-  mixed.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE, n.sims){
+  mixed.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE, n.sims, WITHCI = F){
     signif<-rep(NA, n.sims) #note that you can specify number of simulations - default is 1000
     withProgress(message = 'Running Simulations', value = 0, {
       for(s in 1:n.sims){
@@ -195,8 +195,14 @@ server <- function(input, output) {
         incProgress(1/n.sims, detail = paste("Simulation", s))
       }
     })
-    power<-mean(signif, na.rm=T) #calculates proportion of significant models out of # of simulated datasets... 
-    return(power)
+    power<-mean(signif, na.rm=T) #calculates proportion of significant models out of # of simulated datasets...
+    if(WITHCI){
+      se_power <- (power*(1-power)/n.sims)^.5
+      ci_power <- round(c(power + c(-1,1)*qnorm(.975)*se_power),2)
+      return(paste0(power, ' [', ci_power[1], ', ', ci_power[2], ']'))
+    } else {
+      return(power)
+    }
   }
   graph.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE,n.sims){
     KK<-seq(10, N, by=5)       #will ieterate from 3 cases to the max.K specified in the function above
@@ -230,14 +236,14 @@ observeEvent(input$calculate,{
       hide("plot1")
       show("selected_var")
       output$selected_var <- renderText({
-        paste0("With ",input$N," participants with this study design, your predicted power would be: ", 
+        paste0("With ",input$N," participants with this study design, your predicted power would be (with 95% CI): ", 
           isolate({mixed.power(N=input$N,
                           DIST=input$DIST,
                           DELTA=(input$DELTA)*.01,
                           CUSTOM=input$CUSTOM,
                           INTERCEPT= input$INTERCEPT,
                           VARIANCE= input$VARIANCE,
-                          n.sims=input$n.sims)}))
+                          n.sims=input$n.sims, WITHCI = T)}))
         })
       })
     }
