@@ -1,0 +1,10 @@
+name: power_calc
+title:
+username:
+account: pettitta
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 339589
+bundleId: 1365256
+url: https://pettitta.shinyapps.io/power_calc/
+when: 1525891591.02095

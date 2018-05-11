@@ -11,16 +11,17 @@
 #
 #
 
-packages <- c("lme4", "nlme", 
-              "ggplot2", "dplyr", 
-              "tidyr", "data.table",
-              "longpower", "simr", "powerlmm",
-              "MBESS","sjPlot","GGally","knitr",
-              "tidyverse","simstudy","arm","shinythemes","shinyjs","cowplot","stringr")
-if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
-  install.packages(setdiff(packages, rownames(installed.packages())))
-}
-lapply(packages, library, character.only = TRUE)
+library("lme4")
+library("GGally")
+library("knitr")
+library("tidyverse")
+library("simstudy")
+library("arm")
+library("shinythemes")
+library("shinyjs")
+library("stringr")
+
+
 text_settings <-
   theme(text = element_text(size = 15)) +
   theme(plot.title = element_text(size =25,face='bold')) +
@@ -198,7 +199,6 @@ server <- function(input, output) {
     return(power)
   }
   graph.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE,n.sims){
-    require(ggplot2)
     KK<-seq(10, N, by=5)       #will ieterate from 3 cases to the max.K specified in the function above
     Y<-rep(NA, length(KK))        #Empty vector to contain power estimates from mixed.power () function
     NN<-rep(DIST, length(KK))        #Repeates the number of habitats you specified to equal the length of the KK vector 
@@ -214,7 +214,7 @@ server <- function(input, output) {
     g1<-ggplot(aes(x=KK, y=Y), data=DF) +
       geom_smooth(se=F,color="#d75452")+
       geom_hline(yintercept = .8, lty="dashed", col="#5b6976", lwd=1) +
-      xlab("\nScans Per Participant")+ylab("\nPower")+ 
+      xlab("\nSample Size")+ylab("\nPower")+ 
       ggtitle("Power Analysis") +
       scale_y_continuous(limits = c(0, 1)) +
       apatheme +
