@@ -150,6 +150,16 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                     selectInput("graph", "Would you like create a graph? Warning: Depending on your parameters (e.g., high N, high simulation), this option could take a while.",
                                 c("No",
                                   "Yes")),
+                    # Input: If they did want to create a graph, input min sample size 
+                    conditionalPanel(
+                      condition = "input.graph == 'Yes'",
+                      numericInput("min.sample.size", "Minimum sample size: ", 10)
+                    ),
+                    # Input: If they did want to create a graph, input step size 
+                    conditionalPanel(
+                      condition = "input.graph == 'Yes'",
+                      numericInput("sample.step.size", "For each simulation, increase sample by: ", 20)
+                    ),
                     # Input: Lets user select if they would like to customize parameters
                     selectInput("CUSTOM", "Would you like to set custom parameters for the Intercept and Variance?",
                                 c("No",
@@ -204,8 +214,8 @@ server <- function(input, output) {
       return(list(power = power, lower = ci_power[1], upper = ci_power[2]))
     }
   }
-  graph.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE,n.sims){
-    KK<-seq(10, N, by=5)       #will ieterate from 3 cases to the max.K specified in the function above
+  graph.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE,n.sims,min.N=10,step.N=20){
+    KK<-seq(min.N, N, by=step.N)       #will ieterate from 3 cases to the max.K specified in the function above
     Y<-rep(NA, length(KK))        #Empty vector to contain power estimates from mixed.power () function
     upper<-rep(NA, length(KK))
     lower<-rep(NA, length(KK))
@@ -263,7 +273,9 @@ observeEvent(input$calculate,{
                           CUSTOM=input$CUSTOM,
                           INTERCEPT= input$INTERCEPT,
                           VARIANCE= input$VARIANCE,
-                          n.sims=input$n.sims))
+                          n.sims=input$n.sims,
+                          min.N=input$min.sample.size,
+                          step.N=input$sample.step.size))
         },height = 400, width = 600)
       })
     }
