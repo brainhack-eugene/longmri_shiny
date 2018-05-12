@@ -178,7 +178,7 @@ ui <- fluidPage(theme = shinytheme("superhero"),
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
-  mixed.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE, n.sims, WITHCI = F){
+  mixed.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE, n.sims, PRINTCI = F){
     signif<-rep(NA, n.sims) #note that you can specify number of simulations - default is 1000
     withProgress(message = 'Running Simulations', value = 0, {
       for(s in 1:n.sims){
@@ -196,28 +196,34 @@ server <- function(input, output) {
       }
     })
     power<-mean(signif, na.rm=T) #calculates proportion of significant models out of # of simulated datasets...
-    if(WITHCI){
-      se_power <- (power*(1-power)/n.sims)^.5
-      ci_power <- round(c(power + c(-1,1)*qnorm(.975)*se_power),2)
+    se_power <- (power*(1-power)/n.sims)^.5
+    ci_power <- round(c(power + c(-1,1)*qnorm(.975)*se_power),2)
+    if(PRINTCI){
       return(paste0(power, ' [', ci_power[1], ', ', ci_power[2], ']'))
     } else {
-      return(power)
+      return(list(power = power, lower = ci_power[1], upper = ci_power[2]))
     }
   }
   graph.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE,n.sims){
     KK<-seq(10, N, by=5)       #will ieterate from 3 cases to the max.K specified in the function above
     Y<-rep(NA, length(KK))        #Empty vector to contain power estimates from mixed.power () function
+    upper<-rep(NA, length(KK))
+    lower<-rep(NA, length(KK))
     NN<-rep(DIST, length(KK))        #Repeates the number of habitats you specified to equal the length of the KK vector 
     withProgress(message = 'Creating Graph', value = 0, {
     for(i in 1:length(KK)){
-      Y[i]<-mixed.power(KK[i], NN[i],DELTA,CUSTOM,INTERCEPT,VARIANCE,n.sims) #runs mixed power function and stores results one at a time
+      powerest <- mixed.power(KK[i], NN[i],DELTA,CUSTOM,INTERCEPT,VARIANCE,n.sims)
+      Y[i] <- powerest$power #runs mixed power function and stores results one at a time
+      upper[i] <- ifelse(powerest$upper > 1, 1, powerest$upper)
+      lower[i] <- ifelse(powerest$lower < 0, 0, powerest$lower)
       incProgress(1/length(KK), detail = paste(str_replace_all(string=paste(round(i/length(KK)*100,0),"%"), pattern=" ",replacement = "")," complete"))
     }
     })
-    DF<-as.data.frame(cbind(KK, Y)) #creates data frame for plotting
-    colnames(DF)<-c("KK", "Y")
+    DF<-as.data.frame(cbind(KK, Y, lower, upper)) #creates data frame for plotting
+    colnames(DF)<-c("KK", "Y", "lower", "upper")
     #Code below provides a basic power plot with a horizontal line at .80 
     g1<-ggplot(aes(x=KK, y=Y), data=DF) +
+      geom_errorbar(aes(ymin = lower, ymax = upper), color = '#555555', width = 0) +
       geom_smooth(se=F,color="#d75452")+
       geom_hline(yintercept = .8, lty="dashed", col="#5b6976", lwd=1) +
       xlab("\nSample Size")+ylab("\nPower")+ 
@@ -243,7 +249,7 @@ observeEvent(input$calculate,{
                           CUSTOM=input$CUSTOM,
                           INTERCEPT= input$INTERCEPT,
                           VARIANCE= input$VARIANCE,
-                          n.sims=input$n.sims, WITHCI = T)}))
+                          n.sims=input$n.sims, PRINTCI = T)}))
         })
       })
     }
