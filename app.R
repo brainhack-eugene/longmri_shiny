@@ -163,7 +163,7 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                       numericInput("VARIANCE", "Variance Value: ", NA)
                     ),
                       
-                    actionButton("calculate", "Calculate",width='100%',)
+                    actionButton("calculate", "Calculate",width='100%')
                     ),
                   
                  
@@ -180,27 +180,33 @@ ui <- fluidPage(theme = shinytheme("superhero"),
 # Define server logic required to draw a histogram
 server <- function(input, output) {
   mixed.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE, n.sims, PRINTCI = F){
-    signif<-rep(NA, n.sims) #note that you can specify number of simulations - default is 1000
-    withProgress(message = 'Running Simulations', value = 0, {
-      for(s in 1:n.sims){
-        if (CUSTOM=="Yes"){
-          fake.data<-simdatalong(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE)                  #calls in data simulation function
-        } else {
-          fake.data<-simdatalong(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE)           #calls in data simulation function
-        }
-        lme.power.null<-lmer(brain.measure~1+(1|ID), REML = FALSE,data=fake.data)
-        lme.power<-lmer(brain.measure~Age+(1|ID), REML = FALSE,data=fake.data)            #estimates mixed effect model using each simulated dataset
-        # theta.hat<-fixef(lme.power)["Age"]                                  #saves age coefficients from each simulated dataset 
-        # theta.se<-se.fixef(lme.power)["Age"]                                #saves standard error of age coefficients from each simulated dataset
-        signif[s]<-ifelse(anova(lme.power.null,lme.power)$`Pr(>Chisq)`[2]<.05, 1, 0)#assigns value of 1 to significant coefficients 0 to ns coefficients
-        incProgress(1/n.sims, detail = paste("Simulation", s))
+    #faster to get all data for simulation at once
+    fake.data<-simdatalong(N*n.sims,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE)           #calls in data simulation function
+    #faster to use data.table features
+    fake.data[, simgrp := (ID-1) %/% N + 1]
+    
+    sigdif <- function(brain.measure, Age, ID, simgrp, measure = 'chisq', IC_cut = 6, alpha = .05){
+      lme.power.null<-lmer(brain.measure~1+(1|ID), REML = FALSE)
+      lme.power<-lmer(brain.measure~Age+(1|ID), REML = FALSE)
+      if((simgrp/n.sims*100) %% 10 == 0) incProgress(1/n.sims*(n.sims/10), detail = paste("Simulation", simgrp))
+      if(measure == 'AIC'){
+        return(diff(AIC(lme.power.null, lme.power)$AIC) < IC_cut)
+      } else if(measure == 'BIC'){
+        return(diff(BIC(lme.power.null, lme.power)$BIC) < IC_cut)
+      } else if(measure == 'chisq'){
+        return(anova(lme.power.null,lme.power)$`Pr(>Chisq)`[2] < alpha)
       }
+      
+    }
+
+    withProgress(message = 'Running Simulations', value = 0, {
+      fake.data[, sigdif := sigdif(brain.measure, Age, ID, simgrp), by = simgrp]
     })
-    power<-mean(signif, na.rm=T) #calculates proportion of significant models out of # of simulated datasets...
+    power<-mean(fake.data$sigdif, na.rm=T)
     se_power <- (power*(1-power)/n.sims)^.5
     ci_power <- round(c(power + c(-1,1)*qnorm(.975)*se_power),2)
     if(PRINTCI){
-      return(paste0(power, ' [', ci_power[1], ', ', ci_power[2], ']'))
+      return(paste0(round(power,2), ' [', ci_power[1], ', ', ci_power[2], ']'))
     } else {
       return(list(power = power, lower = ci_power[1], upper = ci_power[2]))
     }
