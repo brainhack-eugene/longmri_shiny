@@ -199,8 +199,8 @@ server <- function(input, output) {
         }
         lme.power.null<-lmer(brain.measure~1+(1|ID), REML = FALSE,data=fake.data)
         lme.power<-lmer(brain.measure~Age+(1|ID), REML = FALSE,data=fake.data)            #estimates mixed effect model using each simulated dataset
-        theta.hat<-fixef(lme.power)["Age"]                                  #saves age coefficients from each simulated dataset 
-        theta.se<-se.fixef(lme.power)["Age"]                                #saves standard error of age coefficients from each simulated dataset
+        # theta.hat<-fixef(lme.power)["Age"]                                  #saves age coefficients from each simulated dataset 
+        # theta.se<-se.fixef(lme.power)["Age"]                                #saves standard error of age coefficients from each simulated dataset
         signif[s]<-ifelse(anova(lme.power.null,lme.power)$`Pr(>Chisq)`[2]<.05, 1, 0)#assigns value of 1 to significant coefficients 0 to ns coefficients
         incProgress(1/n.sims, detail = paste("Simulation", s))
       }
@@ -215,7 +215,7 @@ server <- function(input, output) {
     }
   }
   graph.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE,n.sims,min.N=10,step.N=20){
-    KK<-seq(min.N, N, by=step.N)       #will ieterate from 3 cases to the max.K specified in the function above
+    KK<-seq(min.N, N, by=step.N)       #will ieterate from min.N cases to the max.K specified in the function above
     Y<-rep(NA, length(KK))        #Empty vector to contain power estimates from mixed.power () function
     upper<-rep(NA, length(KK))
     lower<-rep(NA, length(KK))
