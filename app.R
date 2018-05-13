@@ -42,23 +42,24 @@ apatheme=theme_bw()+
 # Set up using Keith Goldfield's "Longitudinal data with varying observation and interval times"
 #  https://cran.r-project.org/web/packages/simstudy/vignettes/simstudy.html
 
-
-
 simdatalong<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE){
-  def_T1 <- defData(varname = "Age.1", dist="uniform", formula = "6;9",id = "ID")             # create random uniform distribution of age range 6-9 
-  def_T1 <- defData(def_T1,varname = "spread", dist = "normal", formula = "1",variance=0.01)  # create random "spread" factor for adjusting values 
-  def_T1 <- defData(def_T1, varname = "mInterval", dist = "uniform", formula = "0.8;1.2")     # define mInterval = the average time (years) between intervals for a subject
-  def_T1 <- defData(def_T1, varname = "vInterval", dist = "nonrandom", formula = 0.07)        # define vInterval = specifies the variance of those interval times
-  
+  #1 create random uniform distribution of age range 6-9 
+  #2 create random "spread" factor for adjusting values 
+  #3 define mInterval = the average time (years) between intervals for a subject
+  #4 define vInterval = specifies the variance of those interval times
+  def_T1 <- data.table::rbindlist(
+    list(simstudy::defData(varname = "Age.1", dist="uniform", formula = "6;9"),
+         simstudy::defData(varname = "spread", dist = "normal", formula = "1",variance=0.01),
+         simstudy::defData(varname = "mInterval", dist = "uniform", formula = "0.8;1.2"),
+         simstudy::defData(varname = "vInterval", dist = "nonrandom", formula = 0.07)))
   # Generate Simulated Data    
-  SIM_DATA <- genData(N, def_T1)
-  
-  SIM_DATA$nCount <- sample(1:DIST, size = N, replace = TRUE, prob = 1:DIST)
+  SIM_DATA <- simstudy::genData(N, def_T1)
+  SIM_DATA[, nCount := sample(1:DIST, size = N, replace = TRUE, prob = 1:DIST)]
+  SIM_DATA[, ID := 1:.N]
   
   ## Create Longitudinal dataframe based on parameters defined above      
   SIM_DATA_long <- addPeriods(SIM_DATA, id="ID")
-  
-  
+ 
   # Brain Measure decreasing at DELTA% per year with added noise
   if (CUSTOM == "No") {
     def_Long  <- defDataAdd(varname = "brain.measure",
@@ -75,23 +76,13 @@ simdatalong<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE){
   # Add Age dependent variables to longitudinal dataframe     
   SIM_DATA_long  <- addColumns(def_Long,SIM_DATA_long)
   
-  
   # create a new column with Age term
-  SIM_DATA_long <- mutate(SIM_DATA_long, Age = Age.1 + time) 
-  
-  SIM_DATA_long$ID <- as.factor(SIM_DATA_long$ID)
-  
-  SIM_DATA_long$time <- as.factor(SIM_DATA_long$time)
+  SIM_DATA_long[, Age := Age.1 + time]
   # Return
-  SIM_DATA_long
+  return(SIM_DATA_long)
 }
 
-
 #number of participants (J) with a given number of brains per participant (K)
-
-
-
-
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(theme = shinytheme("superhero"),
@@ -150,6 +141,16 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                     selectInput("graph", "Would you like create a graph? Warning: Depending on your parameters (e.g., high N, high simulation), this option could take a while.",
                                 c("No",
                                   "Yes")),
+                    # Input: If they did want to create a graph, input min sample size 
+                    conditionalPanel(
+                      condition = "input.graph == 'Yes'",
+                      numericInput("min.sample.size", "Minimum sample size: ", 10)
+                    ),
+                    # Input: If they did want to create a graph, input step size 
+                    conditionalPanel(
+                      condition = "input.graph == 'Yes'",
+                      numericInput("sample.step.size", "For each simulation, increase sample by: ", 20)
+                    ),
                     # Input: Lets user select if they would like to customize parameters
                     selectInput("CUSTOM", "Would you like to set custom parameters for the Intercept and Variance?",
                                 c("No",
@@ -162,7 +163,7 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                       numericInput("VARIANCE", "Variance Value: ", NA)
                     ),
                       
-                    actionButton("calculate", "Calculate",width='100%',)
+                    actionButton("calculate", "Calculate",width='100%')
                     ),
                   
                  
@@ -178,40 +179,58 @@ ui <- fluidPage(theme = shinytheme("superhero"),
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
-  mixed.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE, n.sims){
-    signif<-rep(NA, n.sims) #note that you can specify number of simulations - default is 1000
-    withProgress(message = 'Running Simulations', value = 0, {
-      for(s in 1:n.sims){
-        if (CUSTOM=="Yes"){
-          fake.data<-simdatalong(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE)                  #calls in data simulation function
-        } else {
-          fake.data<-simdatalong(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE)           #calls in data simulation function
-        }
-        lme.power.null<-lmer(brain.measure~1+(1|ID), REML = FALSE,data=fake.data)
-        lme.power<-lmer(brain.measure~Age+(1|ID), REML = FALSE,data=fake.data)            #estimates mixed effect model using each simulated dataset
-        theta.hat<-fixef(lme.power)["Age"]                                  #saves age coefficients from each simulated dataset 
-        theta.se<-se.fixef(lme.power)["Age"]                                #saves standard error of age coefficients from each simulated dataset
-        signif[s]<-ifelse(anova(lme.power.null,lme.power)$`Pr(>Chisq)`[2]<.05, 1, 0)#assigns value of 1 to significant coefficients 0 to ns coefficients
-        incProgress(1/n.sims, detail = paste("Simulation", s))
+  mixed.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE, n.sims, PRINTCI = F){
+    #faster to get all data for simulation at once
+    fake.data<-simdatalong(N*n.sims,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE)           #calls in data simulation function
+    #faster to use data.table features
+    fake.data[, simgrp := (ID-1) %/% N + 1]
+    
+    sigdif <- function(brain.measure, Age, ID, simgrp, measure = 'chisq', IC_cut = 6, alpha = .05){
+      lme.power.null<-lmer(brain.measure~1+(1|ID), REML = FALSE)
+      lme.power<-lmer(brain.measure~Age+(1|ID), REML = FALSE)
+      if((simgrp/n.sims*100) %% 10 == 0) incProgress(1/n.sims*(n.sims/10), detail = paste("Simulation", simgrp))
+      if(measure == 'AIC'){
+        return(diff(AIC(lme.power.null, lme.power)$AIC) < IC_cut)
+      } else if(measure == 'BIC'){
+        return(diff(BIC(lme.power.null, lme.power)$BIC) < IC_cut)
+      } else if(measure == 'chisq'){
+        return(anova(lme.power.null,lme.power)$`Pr(>Chisq)`[2] < alpha)
       }
+      
+    }
+
+    withProgress(message = 'Running Simulations', value = 0, {
+      fake.data[, sigdif := sigdif(brain.measure, Age, ID, simgrp), by = simgrp]
     })
-    power<-mean(signif, na.rm=T) #calculates proportion of significant models out of # of simulated datasets... 
-    return(power)
+    power<-mean(fake.data$sigdif, na.rm=T)
+    se_power <- (power*(1-power)/n.sims)^.5
+    ci_power <- round(c(power + c(-1,1)*qnorm(.975)*se_power),2)
+    if(PRINTCI){
+      return(paste0(round(power,2), ' [', ci_power[1], ', ', ci_power[2], ']'))
+    } else {
+      return(list(power = power, lower = ci_power[1], upper = ci_power[2]))
+    }
   }
-  graph.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE,n.sims){
-    KK<-seq(10, N, by=5)       #will ieterate from 3 cases to the max.K specified in the function above
+  graph.power<-function(N,DIST,DELTA,CUSTOM,INTERCEPT,VARIANCE,n.sims,min.N=10,step.N=20){
+    KK<-seq(min.N, N, by=step.N)       #will ieterate from min.N cases to the max.K specified in the function above
     Y<-rep(NA, length(KK))        #Empty vector to contain power estimates from mixed.power () function
+    upper<-rep(NA, length(KK))
+    lower<-rep(NA, length(KK))
     NN<-rep(DIST, length(KK))        #Repeates the number of habitats you specified to equal the length of the KK vector 
     withProgress(message = 'Creating Graph', value = 0, {
     for(i in 1:length(KK)){
-      Y[i]<-mixed.power(KK[i], NN[i],DELTA,CUSTOM,INTERCEPT,VARIANCE,n.sims) #runs mixed power function and stores results one at a time
+      powerest <- mixed.power(KK[i], NN[i],DELTA,CUSTOM,INTERCEPT,VARIANCE,n.sims)
+      Y[i] <- powerest$power #runs mixed power function and stores results one at a time
+      upper[i] <- ifelse(powerest$upper > 1, 1, powerest$upper)
+      lower[i] <- ifelse(powerest$lower < 0, 0, powerest$lower)
       incProgress(1/length(KK), detail = paste(str_replace_all(string=paste(round(i/length(KK)*100,0),"%"), pattern=" ",replacement = "")," complete"))
     }
     })
-    DF<-as.data.frame(cbind(KK, Y)) #creates data frame for plotting
-    colnames(DF)<-c("KK", "Y")
+    DF<-as.data.frame(cbind(KK, Y, lower, upper)) #creates data frame for plotting
+    colnames(DF)<-c("KK", "Y", "lower", "upper")
     #Code below provides a basic power plot with a horizontal line at .80 
     g1<-ggplot(aes(x=KK, y=Y), data=DF) +
+      geom_errorbar(aes(ymin = lower, ymax = upper), color = '#555555', width = 0) +
       geom_smooth(se=F,color="#d75452")+
       geom_hline(yintercept = .8, lty="dashed", col="#5b6976", lwd=1) +
       xlab("\nSample Size")+ylab("\nPower")+ 
@@ -230,14 +249,14 @@ observeEvent(input$calculate,{
       hide("plot1")
       show("selected_var")
       output$selected_var <- renderText({
-        paste0("With ",input$N," participants with this study design, your predicted power would be: ", 
+        paste0("With ",input$N," participants with this study design, your predicted power would be (with 95% CI): ", 
           isolate({mixed.power(N=input$N,
                           DIST=input$DIST,
                           DELTA=(input$DELTA)*.01,
                           CUSTOM=input$CUSTOM,
                           INTERCEPT= input$INTERCEPT,
                           VARIANCE= input$VARIANCE,
-                          n.sims=input$n.sims)}))
+                          n.sims=input$n.sims, PRINTCI = T)}))
         })
       })
     }
@@ -251,7 +270,9 @@ observeEvent(input$calculate,{
                           CUSTOM=input$CUSTOM,
                           INTERCEPT= input$INTERCEPT,
                           VARIANCE= input$VARIANCE,
-                          n.sims=input$n.sims))
+                          n.sims=input$n.sims,
+                          min.N=input$min.sample.size,
+                          step.N=input$sample.step.size))
         },height = 400, width = 600)
       })
     }
