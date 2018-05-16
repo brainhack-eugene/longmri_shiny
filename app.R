@@ -170,6 +170,7 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                   
                   # Show a plot of the generated distribution
                   mainPanel(
+                    div(id="container",h5(textOutput("sample_size"))),
                     div(id="container",h5(textOutput("selected_var"))),
                     plotOutput("plot1")
 
@@ -241,6 +242,12 @@ server <- function(input, output) {
       theme(axis.title=element_text(color = "#ebebeb"),axis.title.y=element_text(margin = unit(c(0, 7, 0, 0), "mm")),axis.text=element_text(color="#ebebeb"),axis.line=element_line(color="#ebebeb"),axis.ticks=element_line(color="#ebebeb"),plot.title=element_text(color="#ebebeb"),plot.background = element_rect(fill = "#2c3e4f",colour="#2c3e4f"),panel.background = element_rect(fill="#2c3e4f",color="#2c3e4f"))
     return(g1)
   }
+  
+  output$sample_size = eventReactive(input$N, {
+    show("sample_size")
+    paste("You selected a sample size of " ,input$N)
+  })
+  
 observeEvent(input$calculate,{
   
   
